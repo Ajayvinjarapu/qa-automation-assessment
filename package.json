@@ -1,0 +1,13 @@
+{
+  "name": "takehome-assessment",
+  "version": "1.0.0",
+  "description": "Automation & QA Developer Take-Home Skills Assessment",
+  "main": "generate_report.js",
+  "type": "commonjs",
+  "scripts": {
+    "generate-report": "node generate_report.js"
+  },
+  "dependencies": {
+    "pdfkit": "^0.15.0"
+  }
+}

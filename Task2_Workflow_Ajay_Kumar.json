@@ -1,0 +1,331 @@
+{
+  "name": "Task2_Workflow_Ajay_Kumar",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "e00a12c8-7ff7-4402-98ab-8f9216110f01",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        260,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/search/repositories",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-workflow-qa-assessment"
+            }
+          ]
+        },
+        "sendQueryParameters": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "stars:>10000 language:javascript"
+            },
+            {
+              "name": "sort",
+              "value": "stars"
+            },
+            {
+              "name": "order",
+              "value": "desc"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "id": "7b04bf3f-c1da-45e3-85b4-d57cf18b31a8",
+      "name": "Fetch Top JS Repos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        480,
+        260
+      ],
+      "authentication": "genericCredentialType",
+      "genericAuthType": "httpHeaderAuth",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "github-auth-cred",
+          "name": "GitHub Token Authentication"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.first().json.items || [];\nif (items.length === 0) return [];\n\n// Keep only the top 1 repository for enrichment to prevent API rate limits\nconst topRepo = items[0];\nreturn [{\n  json: {\n    name: topRepo.name,\n    owner: topRepo.owner.login,\n    description: topRepo.description,\n    stars: topRepo.stargazers_count,\n    url: topRepo.html_url\n  }\n}];"
+      },
+      "id": "d040854d-171b-4f96-bd7c-5ab5915d97f2",
+      "name": "Keep Top Repo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.owner }}/{{ $json.name }}/languages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-workflow-qa-assessment"
+            }
+          ]
+        },
+        "options": {
+          "continueOnFail": true
+        }
+      },
+      "id": "c1fcf8d8-7b98-4ea7-90ff-4e789bb734d8",
+      "name": "Fetch Repo Languages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        920,
+        260
+      ],
+      "authentication": "genericCredentialType",
+      "genericAuthType": "httpHeaderAuth",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "github-auth-cred",
+          "name": "GitHub Token Authentication"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const repoInfo = $('Keep Top Repo').first().json;\nconst languages = $input.first().json;\n\n// Handle API fail gracefully\nif (languages.error) {\n  return [{\n    json: {\n      ...repoInfo,\n      languages: 'Unavailable'\n    }\n  }];\n}\n\n// Format top languages list\nconst langList = Object.keys(languages).slice(0, 3).join(', ');\nreturn [{\n  json: {\n    ...repoInfo,\n    languages: langList || 'None'\n  }\n}];"
+      },
+      "id": "283f3e1b-b4f5-4ca3-b8e7-817ab3de51ff",
+      "name": "Merge Repo and Languages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "stars-check",
+              "leftValue": "={{ $json.stars }}",
+              "rightValue": 100000,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b3e34b7f-0b32-4752-bfbc-55c3c0ef96c2",
+      "name": "Check Popularity",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "=🔥 *HOT JS REPOSITORY BRIEF* 🔥\n\n*Name:* {{ $json.name }}\n*Owner:* {{ $json.owner }}\n*Description:* {{ $json.description }}\n*Stars:* {{ $json.stars }} (Superpopular!)\n*Top Languages:* {{ $json.languages }}\n*URL:* {{ $json.url }}",
+        "additionalFields": {}
+      },
+      "id": "673f324c-d9b8-4cbb-bc3a-e9fa4cc722f4",
+      "name": "Post Telegram Digest (Hot)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        180
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-cred",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "=ℹ️ *Trending JS Repository Brief* ℹ️\n\n*Name:* {{ $json.name }}\n*Owner:* {{ $json.owner }}\n*Description:* {{ $json.description }}\n*Stars:* {{ $json.stars }}\n*Top Languages:* {{ $json.languages }}\n*URL:* {{ $json.url }}",
+        "additionalFields": {}
+      },
+      "id": "92cb348f-3da8-4fb7-8547-4f67c2937748",
+      "name": "Post Telegram Digest (Standard)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        340
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-cred",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "31b4e54c-7cba-4e9b-9c3f-ee75fdd812a1",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        260,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "=⚠️ *n8n Workflow Execution Error* ⚠️\n\n*Workflow Name:* {{ $json.workflow.name }}\n*Execution ID:* {{ $json.execution.id }}\n*Error Node:* {{ $json.execution.error.node.name }}\n*Error Message:* {{ $json.execution.error.message }}",
+        "additionalFields": {}
+      },
+      "id": "4e1a7b8f-5cda-48c9-bcfa-de1234bc56ef",
+      "name": "Post Error Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        480,
+        560
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-cred",
+          "name": "Telegram Bot API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Top JS Repos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Top JS Repos": {
+      "main": [
+        [
+          {
+            "node": "Keep Top Repo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep Top Repo": {
+      "main": [
+        [
+          {
+            "node": "Fetch Repo Languages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Repo Languages": {
+      "main": [
+        [
+          {
+            "node": "Merge Repo and Languages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Repo and Languages": {
+      "main": [
+        [
+          {
+            "node": "Check Popularity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Popularity": {
+      "main": [
+        [
+          {
+            "node": "Post Telegram Digest (Hot)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Post Telegram Digest (Standard)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Post Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
